@@ -3,6 +3,10 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 import json
 import requests
+from kafka import KafkaProducer
+
+producer = None
+kafka_topic = 'users_created'
 
 default_args = {
     'owner': '27lorenzo',
@@ -33,12 +37,25 @@ def format_data(json_data):
     data['registered_date'] = json_data['registered']['date']
     data['phone'] = json_data['phone']
     data['picture'] = json_data['picture']
-    print(json.dumps(data, indent=3))
+    # print(json.dumps(data, indent=3))
+
+
+def create_producer():
+    global producer
+    kafka_bootstrap_servers = 'localhost:9092'
+    producer = KafkaProducer(bootstrap_servers=kafka_bootstrap_servers, max_block_ms=5000)
+
+
+def send_to_kafka(json_data):
+    producer.send(kafka_topic, json.dumps(json_data).encode('utf-8'))
 
 
 def main():
     json_data = extrac_data()
     format_data(json_data)
+    create_producer()
+    send_to_kafka(json_data)
+    producer.close()
 
 
 if __name__ == '__main__':

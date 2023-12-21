@@ -4,6 +4,8 @@ from airflow.operators.python import PythonOperator
 import json
 import requests
 from kafka import KafkaProducer
+import time
+import logging
 
 producer = None
 kafka_topic = 'users_created'
@@ -37,25 +39,46 @@ def format_data(json_data):
     data['registered_date'] = json_data['registered']['date']
     data['phone'] = json_data['phone']
     data['picture'] = json_data['picture']
+    return data
     # print(json.dumps(data, indent=3))
 
 
 def create_producer():
     global producer
-    kafka_bootstrap_servers = 'localhost:9092'
+    # kafka_bootstrap_servers = 'localhost:9092'
+    kafka_bootstrap_servers = 'broker:29092' or '172.18.0.2:29092'
     producer = KafkaProducer(bootstrap_servers=kafka_bootstrap_servers, max_block_ms=5000)
 
 
-def send_to_kafka(json_data):
-    producer.send(kafka_topic, json.dumps(json_data).encode('utf-8'))
+def send_to_kafka():
+    current_time = time.time()
+    create_producer()
+    # Send requests to the API during the next 60 seconds from the start of the call
+    while True:
+        if time.time() > current_time + 60:
+            break
+        try:
+            json_data = extrac_data()
+            data = format_data(json_data)
+            producer.send(kafka_topic, json.dumps(data).encode('utf-8'))
+        except Exception as e:
+            logging.error(f"An error occurred: {e}")
+            continue
+    producer.close()
 
 
 def main():
-    json_data = extrac_data()
-    format_data(json_data)
-    create_producer()
-    send_to_kafka(json_data)
-    producer.close()
+    send_to_kafka()
+
+
+with DAG('user_automation',
+         default_args=default_args,
+         schedule_interval='@daily',
+         catchup=False) as dag:
+    streaming_task = PythonOperator(
+        task_id='stream_data_from_api',
+        python_callable=send_to_kafka
+    )
 
 
 if __name__ == '__main__':

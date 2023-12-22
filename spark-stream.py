@@ -19,8 +19,8 @@ def create_table(session):
     session.execute("""
     CREATE TABLE IF NOT EXISTS spark_streams.created_users (
         id UUID PRIMARY KEY,
-        first_name TEXT,
-        last_name TEXT,
+        firstname TEXT,
+        lastname TEXT,
         gender TEXT,
         address TEXT,
         postcode TEXT,
@@ -36,10 +36,11 @@ def create_table(session):
 
 
 def insert_data_to_cassandra(session, **kwargs):
+    # Function not used -> used writeStream instead
     print("Inserting data...")
     user_id = kwargs.get('id')
-    first_name = kwargs.get('firstname')
-    last_name = kwargs.get('lastname')
+    firstname = kwargs.get('firstname')
+    lastname = kwargs.get('lastname')
     gender = kwargs.get('gender')
     address = kwargs.get('address')
     postcode = kwargs.get('postcode')
@@ -56,9 +57,9 @@ def insert_data_to_cassandra(session, **kwargs):
                 INSERT INTO spark_streams.created_users(id, first_name, last_name, gender, address, 
                     postcode, email, username, dob, registered_date, phone, picture)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (user_id, first_name, last_name, gender, address,
+            """, (user_id, firstname, lastname, gender, address,
                   postcode, email, username, dob, registered_date, phone, picture))
-            logging.info(f"Data inserted for {first_name} {last_name}")
+            logging.info(f"Data inserted for {firstname} {lastname}")
 
     except Exception as e:
         logging.error(f'Could not insert data due to {e}')
@@ -89,6 +90,7 @@ def create_spark_connection():
 def connect_to_kafka(spark_conn):
     spark_df = None
     try:
+        # Create a dataframe connected to Kafka Topic
         spark_df = spark_conn.readStream \
             .format('kafka') \
             .option('kafka.bootstrap.servers', 'localhost:9092') \
@@ -149,20 +151,16 @@ if __name__ == "__main__":
         session = create_cassandra_connection()
 
         if session is not None:
+            # Create keyspace in Cassandra
             create_keyspace(session)
+            # Create table in Spark cluster
             create_table(session)
-# FALTA AVERIGUAR POR QUE USER_ID ES NONE -> CÓMO TENGO QUE LLAMAR A LA FUNCIÓN INSERT_INTO()?
 
             logging.info("Streaming is being started...")
 
-            streaming_query = (
-                selection_df.writeStream.format("org.apache.spark.sql.cassandra")
-                .option('checkpointLocation', '/tmp/checkpoint')
-                .option('keyspace', 'spark_streams')
-                .option('table', 'created_users')
-                .foreachBatch(lambda batch, batch_id:
-                              batch.foreach(lambda row: insert_data_to_cassandra(session, row.asDict())))
-                .start()
-            )
-
+            streaming_query = (selection_df.writeStream.format("org.apache.spark.sql.cassandra")
+                               .option('checkpointLocation', '/tmp/checkpoint')
+                               .option('keyspace', 'spark_streams')
+                               .option('table', 'created_users')
+                               .start())
             streaming_query.awaitTermination()

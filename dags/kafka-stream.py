@@ -6,6 +6,7 @@ import requests
 from kafka import KafkaProducer
 import time
 import logging
+import uuid
 
 producer = None
 kafka_topic = 'users_created'
@@ -25,6 +26,7 @@ def extrac_data():
 
 def format_data(json_data):
     data = {}
+    data['id'] = str(uuid.uuid4())
     data['firstname'] = json_data['name']['first']
     data['lastname'] = json_data['name']['last']
     data['gender'] = json_data['gender']
